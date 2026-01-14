@@ -1,4 +1,6 @@
-def start(args):
-    print("[*] Edge node iniciado")
-    print("[!] Modo demo: captura simulada")
+from dotenv import load_dotenv
+from edge_node.runner import run_edge_node
 
+def start(args):
+    load_dotenv()
+    run_edge_node()
