@@ -1,26 +1,23 @@
 import json
 from pathlib import Path
+
 from secure_gateway.verifier import load_public_key, verify_event_signature
 
-
-TRUST_STORE = Path("secure_gateway/trust_store")
-INCOMING = Path("data/outgoing")
+DATA_IN = Path("data/outgoing")
 
 
 def process_events():
-    public_key_path = TRUST_STORE / "local-node_public.pem"
-    public_key = load_public_key(public_key_path)
+    public_key = load_public_key()
 
-    for event_file in INCOMING.glob("*.json"):
-        with open(event_file, "r", encoding="utf-8") as f:
+    for file in sorted(DATA_IN.glob("event_*.json")):
+        with open(file, "r", encoding="utf-8") as f:
             event = json.load(f)
 
-        valid = verify_event_signature(event.copy(), public_key)
-
-        if valid:
-            print(f"[✓] Evento válido: {event_file.name}")
-        else:
-            print(f"[✗] Evento ALTERADO: {event_file.name}")
+        try:
+            verify_event_signature(event.copy(), public_key)
+            print(f"[✓] Evento válido: {file.name}")
+        except Exception as e:
+            print(f"[✗] Evento rechazado: {file.name} → {e}")
 
 
 if __name__ == "__main__":
