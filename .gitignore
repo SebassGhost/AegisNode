@@ -1,1 +1,9 @@
+# Claves criptográficas
+keys/
+*.pem
+
+# Variables sensibles
 .env
+
+# Datos generados
+data/
