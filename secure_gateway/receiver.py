@@ -1,24 +1,25 @@
 import json
 from pathlib import Path
+from secure_gateway.verifier import verify_event_signature
 
-from secure_gateway.verifier import load_public_key, verify_event_signature
-
-DATA_IN = Path("data/outgoing")
-
+BASE_DIR = Path(__file__).resolve().parents[1]
+EVENTS_DIR = BASE_DIR / "data" / "outgoing"
 
 def process_events():
-    public_key = load_public_key()
+    if not EVENTS_DIR.exists():
+        print("[!] No hay eventos para procesar")
+        return
 
-    for file in sorted(DATA_IN.glob("event_*.json")):
-        with open(file, "r", encoding="utf-8") as f:
+    for event_file in sorted(EVENTS_DIR.glob("event_*.json")):
+        with open(event_file, "r", encoding="utf-8") as f:
             event = json.load(f)
 
         try:
-            verify_event_signature(event.copy(), public_key)
-            print(f"[✓] Evento válido: {file.name}")
-        except Exception as e:
-            print(f"[✗] Evento rechazado: {file.name} → {e}")
+            verify_event_signature(event.copy())
+            print(f"[✓] Evento válido: {event_file.name}")
 
+        except Exception as e:
+            print(f"[✗] Evento rechazado: {event_file.name} → {e}")
 
 if __name__ == "__main__":
     process_events()
