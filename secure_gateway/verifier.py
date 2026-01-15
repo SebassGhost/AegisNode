@@ -1,51 +1,43 @@
-import json
-import base64
-from datetime import datetime
 from pathlib import Path
-
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives import serialization
+import base64
 
-from secure_gateway.replay_cache import is_timestamp_valid, is_nonce_valid
+BASE_DIR = Path(__file__).resolve().parents[1]
+KEYS_DIR = BASE_DIR / "keys"
 
-
-KEY_PATH = Path("keys/local-node/public.key")
-
-
-def load_public_key() -> Ed25519PublicKey:
+def load_public_key_for_node(node_id: str) -> Ed25519PublicKey:
     """
-    Carga la clave pública del nodo.
+    Carga la clave pública asociada a un node_id.
     """
-    with open(KEY_PATH, "rb") as f:
+    key_path = KEYS_DIR / f"{node_id}_public.pem"
+
+    if not key_path.exists():
+        available = [p.name for p in KEYS_DIR.glob("*_public.pem")]
+        raise FileNotFoundError(
+            f"Clave pública no encontrada para nodo '{node_id}'. "
+            f"Disponibles: {available}"
+        )
+
+    with open(key_path, "rb") as f:
         return serialization.load_pem_public_key(f.read())
 
-
-def verify_event_signature(event: dict, public_key: Ed25519PublicKey) -> bool:
+def verify_event_signature(event: dict) -> bool:
     """
-    Verifica firma, timestamp y replay protection.
+    Verifica la firma de un evento usando la clave pública del nodo emisor.
     """
-
-    # --- timestamp ---
-    if "timestamp" not in event:
-        raise ValueError("Evento sin timestamp")
-
-    event_time = datetime.fromisoformat(event["timestamp"]).timestamp()
-    if not is_timestamp_valid(event_time):
-        raise ValueError("Evento fuera de ventana temporal")
-
-    # --- nonce ---
-    if "nonce" not in event:
-        raise ValueError("Evento sin nonce")
-
-    if not is_nonce_valid(event["nonce"], event_time):
-        raise ValueError("Replay detectado")
-
-    # --- firma ---
     if "signature" not in event:
         raise ValueError("Evento sin firma")
 
-    signature = base64.b64decode(event.pop("signature"))
-    event_bytes = json.dumps(event, sort_keys=True).encode()
+    if "node_id" not in event:
+        raise ValueError("Evento sin node_id")
 
-    public_key.verify(signature, event_bytes)
+    signature_b64 = event.pop("signature")
+    signature = base64.b64decode(signature_b64)
+
+    public_key = load_public_key_for_node(event["node_id"])
+
+    message = str(event).encode("utf-8")
+
+    public_key.verify(signature, message)
     return True
