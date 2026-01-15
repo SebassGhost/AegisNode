@@ -13,8 +13,10 @@ def run_edge_node():
     if not keys_path:
         raise RuntimeError("KEYS_PATH no definido en .env")
 
-    private_key_file = "keys/edge01_private.pem"
+    BASE_DIR = Path(__file__).resolve().parents[1]
+    private_key_file = BASE_DIR / "keys" / "edge01_private.pem"
     private_key = load_private_key(private_key_file)
+
 
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
