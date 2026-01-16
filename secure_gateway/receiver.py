@@ -1,13 +1,11 @@
 import json
 from pathlib import Path
 
-from secure_gateway.verifier import verify_event_signature
+from secure_gateway.verifier import verify_event_signature, validate_timestamp
 from secure_gateway.replay_cache import is_replayed, mark_as_seen
-from secure_gateway.validation import is_timestamp_valid
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 EVENTS_DIR = BASE_DIR / "data" / "outgoing"
-
 
 def process_events():
     if not EVENTS_DIR.exists():
@@ -19,25 +17,23 @@ def process_events():
             event = json.load(f)
 
         try:
-            # Validación temporal
-            if not is_timestamp_valid(event["timestamp"]):
-                raise ValueError("Evento fuera de ventana temporal")
+            # 1. Validación temporal (anti-delay / replay)
+            validate_timestamp(event["timestamp"])
 
-            #  Replay persistente
+            # 2. Replay persistente
             if is_replayed(event):
-                raise ValueError("Replay detectado (evento ya procesado)")
+                raise ValueError("Replay detectado")
 
-            # Firma criptográfica
-            verify_event_signature(event.copy())
+            # 3. Verificación criptográfica
+            verify_event_signature(event)
 
-            #  Marcar como visto SOLO si todo fue válido
+            # 4. Marcar como procesado
             mark_as_seen(event)
 
             print(f"[✓] Evento válido: {event_file.name}")
 
         except Exception as e:
             print(f"[✗] Evento rechazado: {event_file.name} → {e}")
-
 
 if __name__ == "__main__":
     process_events()
