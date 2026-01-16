@@ -6,20 +6,12 @@ import base64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives import serialization
 
-# Directorio base del proyecto
 BASE_DIR = Path(__file__).resolve().parents[1]
-
-# Carpeta donde viven las claves públicas (local, NO versionada)
 KEYS_DIR = BASE_DIR / "keys"
 
-# Ventana temporal permitida (en segundos)
-MAX_DRIFT_SECONDS = 60  # modo desarrollo
-
+MAX_DRIFT_SECONDS = 60  # desarrollo
 
 def load_public_key_for_node(node_id: str) -> Ed25519PublicKey:
-    """
-    Carga la clave pública asociada a un node_id específico.
-    """
     key_path = KEYS_DIR / f"{node_id}_public.pem"
 
     if not key_path.exists():
@@ -32,59 +24,33 @@ def load_public_key_for_node(node_id: str) -> Ed25519PublicKey:
     with open(key_path, "rb") as f:
         return serialization.load_pem_public_key(f.read())
 
-
 def validate_timestamp(timestamp_str: str):
-    """
-    Valida que el evento esté dentro de la ventana temporal permitida.
-    Protege contra replay attacks.
-    """
     event_time = datetime.fromisoformat(timestamp_str)
 
-    # Asegurar UTC
     if event_time.tzinfo is None:
         event_time = event_time.replace(tzinfo=timezone.utc)
 
     now = datetime.now(timezone.utc)
+
     delta = abs((now - event_time).total_seconds())
 
     if delta > MAX_DRIFT_SECONDS:
         raise ValueError("Evento fuera de ventana temporal")
 
-
 def verify_event_signature(event: dict) -> bool:
-    """
-    Verifica:
-    - node_id
-    - firma
-    - timestamp (anti-replay)
-    - firma criptográfica válida
-    """
-
     if "node_id" not in event:
         raise ValueError("Evento sin node_id")
 
     if "signature" not in event:
         raise ValueError("Evento sin firma")
 
-    if "timestamp" not in event:
-        raise ValueError("Evento sin timestamp")
-
-    # Anti-replay
-    validate_timestamp(event["timestamp"])
-
-    # Cargar clave pública
     public_key = load_public_key_for_node(event["node_id"])
 
-    # Reconstruir mensaje EXACTO firmado
-    signature_b64 = event["signature"]
-
     event_copy = event.copy()
-    event_copy.pop("signature")
+    signature = base64.b64decode(event_copy.pop("signature"))
 
     message = json.dumps(event_copy, sort_keys=True).encode("utf-8")
-    signature = base64.b64decode(signature_b64)
 
-    # Verificación criptográfica
     public_key.verify(signature, message)
 
     return True
