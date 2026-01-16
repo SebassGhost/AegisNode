@@ -1,13 +1,17 @@
 import json
 import hashlib
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
+import base64
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey
+)
 from cryptography.exceptions import InvalidSignature
 
 
 def canonical_json(data: dict) -> str:
     """
-    JSON canónico: mismo orden → mismo hash
+    JSON canónico: mismo contenido → mismo hash
     """
     return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
@@ -22,42 +26,37 @@ def compute_hash(entry: dict) -> str:
         for k in entry
         if k not in ("hash", "signature")
     }
-    digest = hashlib.sha256(canonical_json(material).encode()).hexdigest()
-    return digest
+    return hashlib.sha256(
+        canonical_json(material).encode("utf-8")
+    ).hexdigest()
 
 
 def sign_hash(private_key_path: str, digest: str) -> str:
+    """
+    Firma el hash usando Ed25519 (sin padding, sin hash externo)
+    """
     with open(private_key_path, "rb") as f:
-        private_key = serialization.load_pem_private_key(
+        private_key: Ed25519PrivateKey = serialization.load_pem_private_key(
             f.read(),
             password=None
         )
 
-    signature = private_key.sign(
-        digest.encode(),
-        padding.PSS(
-            mgf=padding.MGF1(hashes.SHA256()),
-            salt_length=padding.PSS.MAX_LENGTH
-        ),
-        hashes.SHA256()
-    )
+    signature = private_key.sign(digest.encode("utf-8"))
 
-    return signature.hex()
+    return base64.b64encode(signature).decode("utf-8")
 
 
-def verify_signature(public_key_path: str, digest: str, signature_hex: str) -> bool:
+def verify_signature(public_key_path: str, digest: str, signature_b64: str) -> bool:
+    """
+    Verifica firma Ed25519 del hash
+    """
     with open(public_key_path, "rb") as f:
-        public_key = serialization.load_pem_public_key(f.read())
+        public_key: Ed25519PublicKey = serialization.load_pem_public_key(f.read())
 
     try:
         public_key.verify(
-            bytes.fromhex(signature_hex),
-            digest.encode(),
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.MAX_LENGTH
-            ),
-            hashes.SHA256()
+            base64.b64decode(signature_b64),
+            digest.encode("utf-8")
         )
         return True
     except InvalidSignature:
