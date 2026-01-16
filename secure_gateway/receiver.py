@@ -28,48 +28,46 @@ def process_events():
         with open(event_file, "r", encoding="utf-8") as f:
             event = json.load(f)
 
+        decision = "REJECTED"
+        reason = "Unknown error"
+
         try:
-            # 1. Anti-delay / timestamp
+            # 1. Validación temporal
             validate_timestamp(event["timestamp"])
 
             # 2. Replay persistente
             if is_replayed(event):
                 raise ValueError("Replay detectado")
 
-            # 3. Firma criptográfica
+            # 3. Verificación criptográfica
             verify_event_signature(event)
 
             # 4. Marcar como procesado
             mark_as_seen(event)
 
-            # 5. Audit log (aceptado)
-            append_audit_event(
-                event="EVENT_ACCEPTED",
-                node_id=NODE_ID,
-                details={
-                    "event_id": event.get("event_id"),
-                    "source": event_file.name
-                },
-                private_key_path=PRIVATE_KEY_PATH
-            )
+            decision = "ACCEPTED"
+            reason = "Evento válido"
 
             print(f"[✓] Evento válido: {event_file.name}")
 
         except Exception as e:
-            # Audit log (rechazado)
+            reason = str(e)
+            print(f"[✗] Evento rechazado: {event_file.name} → {reason}")
+
+        finally:
+            #  Auditoría obligatoria
             append_audit_event(
-                event="EVENT_REJECTED",
-                node_id=NODE_ID,
-                details={
+                audit_type="EVENT_PROCESSING",
+                data={
                     "event_id": event.get("event_id"),
-                    "source": event_file.name,
-                    "reason": str(e)
-                },
-                private_key_path=PRIVATE_KEY_PATH
+                    "node_id": event.get("node_id"),
+                    "decision": decision,
+                    "reason": reason,
+                    "source_file": event_file.name,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
-
-            print(f"[✗] Evento rechazado: {event_file.name} → {e}")
-
 
 if __name__ == "__main__":
     process_events()
+             
