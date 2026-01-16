@@ -31,31 +31,13 @@ def load_public_key_for_node(node_id: str) -> Ed25519PublicKey:
     with open(key_path, "rb") as f:
         return serialization.load_pem_public_key(f.read())
 
-def validate_timestamp(timestamp_str: str):
-    """
-    Valida que el evento esté dentro de la ventana temporal permitida.
-    Protege contra replay attacks.
-    """
-    event_time = datetime.fromisoformat(timestamp_str)
-
-    # Asegurar que el timestamp esté en UTC
-    if event_time.tzinfo is None:
-        event_time = event_time.replace(tzinfo=timezone.utc)
-
-    now = datetime.now(timezone.utc)
-
-    delta = abs((now - event_time).total_seconds())
-
-    if delta > MAX_DRIFT_SECONDS:
-        raise ValueError("Evento fuera de ventana temporal")
-
 def verify_event_signature(event: dict) -> bool:
     """
     Verifica:
-    - Presencia de node_id
-    - Presencia de firma
-    - Ventana temporal
-    - Firma criptográfica válida
+    - node_id
+    - firma
+    - timestamp (anti-replay)
+    - firma criptográfica válida
     """
 
     if "node_id" not in event:
@@ -67,17 +49,20 @@ def verify_event_signature(event: dict) -> bool:
     if "timestamp" not in event:
         raise ValueError("Evento sin timestamp")
 
-    # Validación temporal (anti-replay)
+    # Anti-replay
     validate_timestamp(event["timestamp"])
 
-    # Extraer firma y reconstruir mensaje
-    signature_b64 = event.pop("signature")
-    signature = base64.b64decode(signature_b64)
-
+    # Cargar clave pública
     public_key = load_public_key_for_node(event["node_id"])
 
-    # Serialización determinística del evento (CRÍTICO)
-    message = json.dumps(event, sort_keys=True).encode("utf-8")
+    # Reconstruir mensaje EXACTO firmado
+    signature_b64 = event["signature"]
+
+    event_copy = event.copy()
+    event_copy.pop("signature")
+
+    message = json.dumps(event_copy, sort_keys=True).encode("utf-8")
+    signature = base64.b64decode(signature_b64)
 
     # Verificación criptográfica
     public_key.verify(signature, message)
