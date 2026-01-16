@@ -15,6 +15,7 @@ KEYS_DIR = BASE_DIR / "keys"
 # Ventana temporal permitida (en segundos)
 MAX_DRIFT_SECONDS = 60  # modo desarrollo
 
+
 def load_public_key_for_node(node_id: str) -> Ed25519PublicKey:
     """
     Carga la clave pública asociada a un node_id específico.
@@ -30,6 +31,25 @@ def load_public_key_for_node(node_id: str) -> Ed25519PublicKey:
 
     with open(key_path, "rb") as f:
         return serialization.load_pem_public_key(f.read())
+
+
+def validate_timestamp(timestamp_str: str):
+    """
+    Valida que el evento esté dentro de la ventana temporal permitida.
+    Protege contra replay attacks.
+    """
+    event_time = datetime.fromisoformat(timestamp_str)
+
+    # Asegurar UTC
+    if event_time.tzinfo is None:
+        event_time = event_time.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    delta = abs((now - event_time).total_seconds())
+
+    if delta > MAX_DRIFT_SECONDS:
+        raise ValueError("Evento fuera de ventana temporal")
+
 
 def verify_event_signature(event: dict) -> bool:
     """
