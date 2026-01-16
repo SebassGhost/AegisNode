@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from datetime import datetime, timezone
 
 from secure_gateway.verifier import (
     verify_event_signature,
