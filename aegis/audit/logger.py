@@ -26,22 +26,29 @@ def _get_last_hash() -> str:
     return json.loads(last_line)["hash"]
 
 
-def append_audit_event(
-    event: str,
-    node_id: str,
-    details: dict,
-    private_key_path: str
-):
+def append_audit_event(audit_type: str, data: dict):
+    """
+    Escribe un evento de auditoría con hash encadenado + firma.
+    """
+
+    # Cargar último hash (si existe)
+    last_hash = None
+    if AUDIT_LOG.exists():
+        with open(AUDIT_LOG, "r", encoding="utf-8") as f:
+            for line in f:
+                pass
+            if line:
+                last_hash = json.loads(line)["hash"]
+
     entry = {
-        "timestamp": time.time(),
-        "event": event,
-        "node_id": node_id,
-        "details": details,
-        "prev_hash": _get_last_hash()
+        "type": audit_type,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "previous_hash": last_hash,
+        "data": data,
     }
 
     entry["hash"] = compute_hash(entry)
-    entry["signature"] = sign_hash(private_key_path, entry["hash"])
+    entry["signature"] = sign_hash(PRIVATE_KEY_PATH, entry["hash"])
 
     with open(AUDIT_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
