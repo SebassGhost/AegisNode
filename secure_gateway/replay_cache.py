@@ -1,31 +1,32 @@
+from pathlib import Path
 import time
+import hashlib
 
-NONCE_CACHE = {}
-WINDOW_SECONDS = 60  # ventana temporal permitida
+BASE_DIR = Path(__file__).resolve().parents[1]
+CACHE_DIR = BASE_DIR / "data" / "replay_cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+WINDOW_SECONDS = 60  # ventana temporal
 
-def is_timestamp_valid(event_timestamp: float) -> bool:
+def _fingerprint(event: dict) -> str:
     """
-    Verifica que el evento esté dentro de la ventana de tiempo.
+    Huella mínima e irreversible del evento.
     """
-    now = time.time()
-    return abs(now - event_timestamp) <= WINDOW_SECONDS
+    material = f"{event['node_id']}|{event['event_id']}|{event['timestamp']}"
+    return hashlib.sha256(material.encode()).hexdigest()
 
-
-def is_nonce_valid(nonce: str, event_timestamp: float) -> bool:
+def is_replayed(event: dict) -> bool:
     """
-    Verifica que el nonce no haya sido usado antes.
-    Limpia nonces antiguos automáticamente.
+    Verifica replay persistente.
     """
-    now = time.time()
+    fp = _fingerprint(event)
+    marker = CACHE_DIR / fp
+    return marker.exists()
 
-    # limpieza de nonces antiguos
-    for n, ts in list(NONCE_CACHE.items()):
-        if now - ts > WINDOW_SECONDS:
-            del NONCE_CACHE[n]
-
-    if nonce in NONCE_CACHE:
-        return False
-
-    NONCE_CACHE[nonce] = event_timestamp
-    return True
+def mark_as_seen(event: dict):
+    """
+    Marca evento como procesado (persistente).
+    """
+    fp = _fingerprint(event)
+    marker = CACHE_DIR / fp
+    marker.write_text(str(time.time()))
