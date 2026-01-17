@@ -72,14 +72,21 @@ def run_gateway():
     print("[*] Secure Gateway activo")
     print("[*] Esperando eventos...\n")
 
-    while True:
-        events = sorted(EVENTS_DIR.glob("event_*.json"))
+    try:
+        while True:
+            events = sorted(EVENTS_DIR.glob("event_*.json"))
 
-        for event_file in events:
-            process_event_file(event_file)
+            if not events:
+                time.sleep(1)
+                continue
 
-        time.sleep(1)
+            for event_file in events:
+                process_event_file(event_file)
 
+    except KeyboardInterrupt:
+        print("\n[!] Secure Gateway detenido limpiamente")
+
+   
 
 if __name__ == "__main__":
     run_gateway()
