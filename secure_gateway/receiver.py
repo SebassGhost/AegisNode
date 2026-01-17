@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from datetime import datetime, timezone
 
-from secure_gateway.firewall import firewall_check
+from secure_gateway.firewall import apply_firewall_rules, FirewallViolation
 from secure_gateway.verifier import verify_event_signature, validate_timestamp
 from secure_gateway.replay_cache import is_replayed, mark_as_seen
 from aegis.audit.logger import append_audit_event
@@ -13,7 +13,6 @@ EVENTS_DIR = BASE_DIR / "data" / "outgoing"
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
 PRIVATE_KEY_PATH = "keys/local-node_private.pem"
-
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -22,11 +21,11 @@ def process_event_file(event_file: Path):
         event = json.load(f)
 
     decision = "REJECTED"
-    reason = "Unknown"
+    reason = "UNKNOWN"
 
     try:
-        # 1. Firewall
-        firewall_check(event)
+        # 1. Firewall (fail fast)
+        apply_firewall_rules(event)
 
         # 2. Timestamp
         validate_timestamp(event["timestamp"])
@@ -42,12 +41,15 @@ def process_event_file(event_file: Path):
 
         decision = "ACCEPTED"
         reason = "OK"
-
         print(f"[✓] Evento aceptado: {event_file.name}")
+
+    except FirewallViolation as e:
+        reason = str(e)
+        print(f"[✗] FIREWALL → {event_file.name}: {reason}")
 
     except Exception as e:
         reason = str(e)
-        print(f"[✗] Evento rechazado: {event_file.name} → {reason}")
+        print(f"[✗] REJECTED → {event_file.name}: {reason}")
 
     finally:
         append_audit_event(
@@ -63,7 +65,6 @@ def process_event_file(event_file: Path):
             private_key_path=PRIVATE_KEY_PATH
         )
 
-        # mover evento ya procesado
         event_file.rename(PROCESSED_DIR / event_file.name)
 
 
@@ -74,9 +75,11 @@ def run_gateway():
     while True:
         events = sorted(EVENTS_DIR.glob("event_*.json"))
 
-        if not events:
-            time.sleep(1)
-            continue
-
         for event_file in events:
             process_event_file(event_file)
+
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    run_gateway()
