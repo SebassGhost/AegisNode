@@ -36,7 +36,7 @@ def process_events():
             # 1. Validación temporal
             validate_timestamp(event["timestamp"])
 
-            # 2. Replay persistente
+            # 2. Anti-replay persistente
             if is_replayed(event):
                 raise ValueError("Replay detectado")
 
@@ -56,7 +56,7 @@ def process_events():
             print(f"[✗] Evento rechazado: {event_file.name} → {reason}")
 
         finally:
-            #  Auditoría obligatoria
+            # Auditoría obligatoria (siempre se ejecuta)
             append_audit_event(
                 audit_type="EVENT_PROCESSING",
                 data={
@@ -66,9 +66,10 @@ def process_events():
                     "reason": reason,
                     "source_file": event_file.name,
                     "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+                },
+                private_key_path=PRIVATE_KEY_PATH
             )
+
 
 if __name__ == "__main__":
     process_events()
-             
