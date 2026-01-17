@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 from datetime import datetime, timezone
+from secure_gateway.firewall import apply_firewall_rules
 
-from aegis.firewall import apply_firewall_rules
 
 from secure_gateway.verifier import (
     verify_event_signature,
