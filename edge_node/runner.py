@@ -66,3 +66,7 @@ def run_edge_node():
 
     except KeyboardInterrupt:
         print("\n[!] Edge node detenido limpiamente")
+
+
+if __name__ == "__main__":
+    run_edge_node()
