@@ -1,101 +1,88 @@
 import json
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 
-from secure_gateway.firewall import (
-    firewall_check,
-    FirewallViolation
-)
-
-from secure_gateway.verifier import (
-    verify_event_signature,
-    validate_timestamp
-)
-
-from secure_gateway.replay_cache import (
-    is_replayed,
-    mark_as_seen
-)
-
+from secure_gateway.firewall import apply_firewall_rules, FirewallViolation
+from secure_gateway.verifier import verify_event_signature, validate_timestamp
+from secure_gateway.replay_cache import is_replayed, mark_as_seen
+from secure_gateway.threats import ThreatLevel
 from aegis.audit.logger import append_audit_event
-
-# ======================
-# CONFIGURACIÓN
-# ======================
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 EVENTS_DIR = BASE_DIR / "data" / "outgoing"
+PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
-NODE_ID = "local-node"
 PRIVATE_KEY_PATH = "keys/local-node_private.pem"
 
-# ======================
-# RECEIVER PRINCIPAL
-# ======================
 
-def process_events():
-    if not EVENTS_DIR.exists():
-        print("[!] No hay eventos para procesar")
-        return
+def classify_threat(exc: Exception) -> ThreatLevel:
+    if isinstance(exc, FirewallViolation):
+        return ThreatLevel.POLICY
+    if "Replay" in str(exc):
+        return ThreatLevel.REPLAY
+    if "signature" in str(exc).lower():
+        return ThreatLevel.INVALID_SIG
+    return ThreatLevel.EVIL
 
-    for event_file in sorted(EVENTS_DIR.glob("event_*.json")):
-        with open(event_file, "r", encoding="utf-8") as f:
-            event = json.load(f)
 
-        decision = "REJECTED"
-        reason = "Unknown error"
+def process_event_file(event_file: Path):
+    with open(event_file, "r", encoding="utf-8") as f:
+        event = json.load(f)
 
-        try:
-            # 1. Firewall lógico (fail fast)
-            firewall_check(event)
+    decision = "REJECTED"
+    threat = ThreatLevel.EVIL
+    reason = "Unknown"
 
-            # 2. Validación temporal
-            validate_timestamp(event["timestamp"])
+    try:
+        apply_firewall_rules(event)
+        validate_timestamp(event["timestamp"])
 
-            # 3. Protección replay
-            if is_replayed(event):
-                raise ValueError("Replay detectado")
+        if is_replayed(event):
+            raise ValueError("Replay detectado")
 
-            # 4. Verificación criptográfica
-            verify_event_signature(event)
+        verify_event_signature(event)
+        mark_as_seen(event)
 
-            # 5. Marcar como procesado
-            mark_as_seen(event)
+        decision = "ACCEPTED"
+        threat = ThreatLevel.OK
+        reason = "Evento válido"
 
-            decision = "ACCEPTED"
-            reason = "Evento válido"
+        print(f"[✓] {event_file.name} → OK")
 
-            print(f"[✓] Evento válido: {event_file.name}")
+    except Exception as e:
+        threat = classify_threat(e)
+        reason = str(e)
+        print(f"[✗] {event_file.name} → {threat.value}")
 
-        except FirewallViolation as fw:
-            reason = f"{fw.code} - {str(fw)}"
-            print(
-                f"[✗] Evento bloqueado por firewall: "
-                f"{event_file.name} → {reason} (severity={fw.severity})"
-            )
+    finally:
+        append_audit_event(
+            audit_type="EVENT_PROCESSING",
+            data={
+                "event_id": event.get("event_id"),
+                "node_id": event.get("node_id"),
+                "decision": decision,
+                "threat": threat.value,
+                "reason": reason,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            },
+            private_key_path=PRIVATE_KEY_PATH
+        )
 
-        except Exception as e:
-            reason = str(e)
-            print(f"[✗] Evento rechazado: {event_file.name} → {reason}")
+        PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+        event_file.rename(PROCESSED_DIR / event_file.name)
 
-        finally:
-            # Auditoría SIEM-style (siempre se ejecuta)
-            append_audit_event(
-                audit_type="EVENT_PROCESSING",
-                data={
-                    "event_id": event.get("event_id"),
-                    "node_id": event.get("node_id"),
-                    "decision": decision,
-                    "reason": reason,
-                    "source_file": event_file.name,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                },
-                private_key_path=PRIVATE_KEY_PATH
-            )
 
-# ======================
-# ENTRYPOINT
-# ======================
+def run_gateway():
+    print("[*] Secure Gateway activo")
+    print("[*] Esperando eventos...")
+
+    while True:
+        for event_file in sorted(EVENTS_DIR.glob("event_*.json")):
+            process_event_file(event_file)
+
+        time.sleep(2)
+
 
 if __name__ == "__main__":
-    process_events()
+    run_gateway()
