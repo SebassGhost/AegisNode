@@ -86,7 +86,7 @@ def run_gateway():
     except KeyboardInterrupt:
         print("\n[!] Secure Gateway detenido limpiamente")
 
-   
+
 
 if __name__ == "__main__":
     run_gateway()
