@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 
+from aegis.firewall import apply_firewall_rules
+
 from secure_gateway.verifier import (
     verify_event_signature,
     validate_timestamp
@@ -33,17 +35,20 @@ def process_events():
         reason = "Unknown error"
 
         try:
-            # 1. Validación temporal
+            # 1. Firewall primero (fail fast)
+            apply_firewall_rules(event)
+
+            # 2. Validación temporal
             validate_timestamp(event["timestamp"])
 
-            # 2. Anti-replay persistente
+            # 3. Replay
             if is_replayed(event):
                 raise ValueError("Replay detectado")
 
-            # 3. Verificación criptográfica
+            # 4. Firma criptográfica
             verify_event_signature(event)
 
-            # 4. Marcar como procesado
+            # 5. Marcar como visto
             mark_as_seen(event)
 
             decision = "ACCEPTED"
@@ -56,7 +61,7 @@ def process_events():
             print(f"[✗] Evento rechazado: {event_file.name} → {reason}")
 
         finally:
-            # Auditoría obligatoria (siempre se ejecuta)
+            # Auditoría obligatoria (SIEM-style)
             append_audit_event(
                 audit_type="EVENT_PROCESSING",
                 data={
