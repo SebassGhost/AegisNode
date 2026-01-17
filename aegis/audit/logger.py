@@ -1,6 +1,7 @@
 import json
 import time
 from pathlib import Path
+from datetime import datetime, timezone
 from aegis.audit.crypto import compute_hash, sign_hash
 
 BASE_DIR = Path(__file__).resolve().parents[2]
