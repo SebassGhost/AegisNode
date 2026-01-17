@@ -6,6 +6,7 @@ from pathlib import Path
 
 from edge_node.signer import load_private_key, sign_event
 
+
 def run_edge_node():
     BASE_DIR = Path(__file__).resolve().parents[1]
 
@@ -45,13 +46,15 @@ def run_edge_node():
                 "node_id": node_id,
                 "event_id": counter,
                 "timestamp": datetime.utcnow().isoformat(),
-                "type": "demo_capture",
+                "type": "INFO",
                 "payload": {
-                    "message": "simulated edge event",
-                    "severity": "low"
+                    "message": "edge telemetry event",
+                    "severity": "low",
+                    "source": "edge-node"
                 }
             }
 
+            # Firma criptográfica del evento
             event["signature"] = sign_event(event, private_key)
 
             filename = out_path / f"event_{counter}.json"
