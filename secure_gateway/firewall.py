@@ -1,87 +1,52 @@
 import time
 from collections import defaultdict
 
-# ======================
-# CONFIGURACIÓN
-# ======================
-
-ALLOWED_NODES = {"local-node"}
-ALLOWED_EVENT_TYPES = {"INFO", "ALERT", "SECURITY"}
-
-MAX_EVENTS_PER_MINUTE = 30
-MAX_PAYLOAD_SIZE = 2048  # bytes
-
-# ======================
-# EXCEPCIÓN ESPECIALIZADA
-# ======================
-
 class FirewallViolation(Exception):
-    def __init__(self, code: str, message: str, severity: str = "MEDIUM"):
+    def __init__(self, code, message, severity="MEDIUM"):
         self.code = code
         self.severity = severity
-        super().__init__(message)
+        super().__init__(f"{code} - {message} (severity={severity})")
 
-# ======================
-# RATE LIMITING
-# ======================
+ALLOWED_NODES = {"local-node"}
+
+ALLOWED_EVENT_TYPES = {
+    "demo_capture",
+    "telemetry",
+    "heartbeat"
+}
+
+MAX_EVENTS_PER_MINUTE = 30
+MAX_PAYLOAD_SIZE = 2048
 
 _event_counter = defaultdict(list)
 
-def _rate_limited(fingerprint: str) -> bool:
+def _rate_limited(node_id: str) -> bool:
     now = time.time()
-    window_start = now - 60
-
-    timestamps = _event_counter[fingerprint]
-    timestamps = [t for t in timestamps if t >= window_start]
-
-    _event_counter[fingerprint] = timestamps
-
-    if len(timestamps) >= MAX_EVENTS_PER_MINUTE:
+    window = now - 60
+    _event_counter[node_id] = [
+        t for t in _event_counter[node_id] if t >= window
+    ]
+    if len(_event_counter[node_id]) >= MAX_EVENTS_PER_MINUTE:
         return True
-
-    _event_counter[fingerprint].append(now)
+    _event_counter[node_id].append(now)
     return False
 
-# ======================
-# FIREWALL PRINCIPAL
-# ======================
 
-def firewall_check(event: dict):
+def apply_firewall_rules(event: dict):
     node_id = event.get("node_id")
     event_type = event.get("type")
     payload = event.get("payload", "")
 
-    # 1. Nodo autorizado
     if node_id not in ALLOWED_NODES:
-        raise FirewallViolation(
-            code="FW-001",
-            message="Nodo no autorizado",
-            severity="HIGH"
-        )
+        raise FirewallViolation("FW-001", "Nodo no autorizado", "HIGH")
 
-    # 2. Tipo permitido
     if event_type not in ALLOWED_EVENT_TYPES:
-        raise FirewallViolation(
-            code="FW-002",
-            message="Tipo de evento bloqueado",
-            severity="MEDIUM"
-        )
+        raise FirewallViolation("FW-002", "Tipo de evento bloqueado", "MEDIUM")
 
-    # 3. Rate limiting (fingerprint)
-    fingerprint = f"{node_id}:{event_type}"
-    if _rate_limited(fingerprint):
-        raise FirewallViolation(
-            code="FW-003",
-            message="Rate limit excedido",
-            severity="MEDIUM"
-        )
+    if _rate_limited(node_id):
+        raise FirewallViolation("FW-003", "Rate limit excedido", "HIGH")
 
-    # 4. Tamaño de payload
     if isinstance(payload, str) and len(payload.encode()) > MAX_PAYLOAD_SIZE:
-        raise FirewallViolation(
-            code="FW-004",
-            message="Payload demasiado grande",
-            severity="LOW"
-        )
+        raise FirewallViolation("FW-004", "Payload demasiado grande", "MEDIUM")
 
     return True
