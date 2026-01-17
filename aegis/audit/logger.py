@@ -1,8 +1,12 @@
 import json
-import time
 from pathlib import Path
 from datetime import datetime, timezone
+
 from aegis.audit.crypto import compute_hash, sign_hash
+
+# ===============================
+# Rutas base
+# ===============================
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 AUDIT_DIR = BASE_DIR / "data" / "audit"
@@ -12,12 +16,20 @@ AUDIT_LOG = AUDIT_DIR / "audit.log"
 GENESIS_HASH = "GENESIS"
 
 
+# ===============================
+# Utilidades internas
+# ===============================
+
 def _get_last_hash() -> str:
+    """
+    Obtiene el hash del último evento de auditoría.
+    Si no existe el log, retorna GENESIS_HASH.
+    """
     if not AUDIT_LOG.exists():
         return GENESIS_HASH
 
+    last_line = None
     with open(AUDIT_LOG, "r", encoding="utf-8") as f:
-        last_line = None
         for last_line in f:
             pass
 
@@ -27,29 +39,35 @@ def _get_last_hash() -> str:
     return json.loads(last_line)["hash"]
 
 
-def append_audit_event(audit_type: str, data: dict):
-    """
-    Escribe un evento de auditoría con hash encadenado + firma.
-    """
+# ===============================
+# API pública
+# ===============================
 
-    # Cargar último hash (si existe)
-    last_hash = None
-    if AUDIT_LOG.exists():
-        with open(AUDIT_LOG, "r", encoding="utf-8") as f:
-            for line in f:
-                pass
-            if line:
-                last_hash = json.loads(line)["hash"]
+def append_audit_event(
+    audit_type: str,
+    data: dict,
+    private_key_path: str
+):
+    """
+    Escribe un evento de auditoría con:
+    - Hash encadenado
+    - Firma criptográfica
+    - Timestamp de registro
+    """
 
     entry = {
         "type": audit_type,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "previous_hash": last_hash,
+        "logged_at": datetime.now(timezone.utc).isoformat(),
+        "previous_hash": _get_last_hash(),
         "data": data,
     }
 
+    # Hash del evento
     entry["hash"] = compute_hash(entry)
-    entry["signature"] = sign_hash(PRIVATE_KEY_PATH, entry["hash"])
 
+    # Firma del hash
+    entry["signature"] = sign_hash(private_key_path, entry["hash"])
+
+    # Persistencia append-only
     with open(AUDIT_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
