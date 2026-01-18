@@ -16,6 +16,19 @@ PRIVATE_KEY_PATH = "keys/local-node_private.pem"
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def safe_move(src: Path, dest_dir: Path):
+    """
+    Mueve el archivo evitando colisiones de nombre
+    """
+    dest = dest_dir / src.name
+
+    if dest.exists():
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dest = dest_dir / f"{src.stem}_{ts}.json"
+
+    src.rename(dest)
+
+
 def process_event_file(event_file: Path):
     with open(event_file, "r", encoding="utf-8") as f:
         event = json.load(f)
@@ -24,7 +37,7 @@ def process_event_file(event_file: Path):
     reason = "UNKNOWN"
 
     try:
-        # 1. Firewall (fail fast)
+        # 1. Firewall
         apply_firewall_rules(event)
 
         # 2. Timestamp
@@ -65,7 +78,7 @@ def process_event_file(event_file: Path):
             private_key_path=PRIVATE_KEY_PATH
         )
 
-        event_file.rename(PROCESSED_DIR / event_file.name)
+        safe_move(event_file, PROCESSED_DIR)
 
 
 def run_gateway():
@@ -85,7 +98,6 @@ def run_gateway():
 
     except KeyboardInterrupt:
         print("\n[!] Secure Gateway detenido limpiamente")
-
 
 
 if __name__ == "__main__":
